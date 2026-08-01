@@ -1,13 +1,14 @@
 """Account registry. Loads non-secret config from accounts.toml; resolves each
 account's password from the environment at runtime (export it, use direnv, a
 secrets manager like 1Password's `op run`, whatever fits your setup)."""
+
 from __future__ import annotations
 
 import os
 import tomllib
 from dataclasses import dataclass
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 # Config resolution order: $IMAP_MCP_ACCOUNTS if set, else accounts.toml at the
 # project root (src/imap_mcp/accounts.py -> two parents up).

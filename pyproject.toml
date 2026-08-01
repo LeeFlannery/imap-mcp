@@ -8,10 +8,22 @@ authors = [
     { name = "Lee Flannery" }
 ]
 requires-python = ">=3.12"
+keywords = ["mcp", "imap", "email", "model-context-protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Email",
+]
 dependencies = [
     "imap-tools>=1.13.0",
     "mcp[cli]>=1.28.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/LeeFlannery/imap-mcp"
+Issues = "https://github.com/LeeFlannery/imap-mcp/issues"
 
 [project.scripts]
 imap-mcp = "imap_mcp:main"
@@ -23,4 +35,15 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.14",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -4,7 +4,6 @@ import pytest
 
 from imap_mcp import accounts
 
-
 CONFIG = textwrap.dedent("""\
     [[account]]
     key = "alpha"

@@ -47,7 +47,7 @@ def fake_msg(**overrides):
         to=("rcpt@example.com",),
         cc=(),
         subject="Hello",
-        date=dt.datetime(2026, 7, 30, 12, 0, tzinfo=dt.timezone.utc),
+        date=dt.datetime(2026, 7, 30, 12, 0, tzinfo=dt.UTC),
         flags=("\\Seen",),
         text="line one\nline two",
         html="",
@@ -58,9 +58,9 @@ def fake_msg(**overrides):
 
 
 def test_open_box_requires_password(config):
-    with pytest.raises(RuntimeError, match="ALPHA_PW"):
-        with imap.open_box(accounts.get_account("alpha")):
-            pass
+    alpha = accounts.get_account("alpha")
+    with pytest.raises(RuntimeError, match="ALPHA_PW"), imap.open_box(alpha):
+        pass
 
 
 def test_open_box_logs_in_and_out(config, monkeypatch):

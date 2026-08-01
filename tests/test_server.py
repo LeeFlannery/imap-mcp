@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 
-from imap_mcp import accounts, imap, server
+from imap_mcp import imap, server
 
 
 def test_parse_since():

@@ -3,13 +3,14 @@
 Every fetch uses mark_seen=False, so imap-tools issues BODY.PEEK and reading a
 message never sets the \\Seen flag in the real mailbox.
 """
+
 from __future__ import annotations
 
 import datetime as dt
-from contextlib import contextmanager
-from typing import Iterator
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 
-from imap_tools import MailBox, AND, OR
+from imap_tools import AND, OR, MailBox
 
 from .accounts import Account
 
@@ -28,10 +29,8 @@ def open_box(account: Account) -> Iterator[MailBox]:
     try:
         yield box
     finally:
-        try:
+        with suppress(Exception):
             box.logout()
-        except Exception:
-            pass
 
 
 def _snippet(msg, length: int = 200) -> str:
@@ -79,8 +78,8 @@ def fetch_rows(
         msgs = box.fetch(
             crit,
             limit=limit,
-            reverse=True,          # newest first
-            mark_seen=False,       # BODY.PEEK -- never touch \Seen
+            reverse=True,  # newest first
+            mark_seen=False,  # BODY.PEEK -- never touch \Seen
             bulk=True,
             headers_only=False,
         )

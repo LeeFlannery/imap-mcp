@@ -1,5 +1,6 @@
 """Unified read-only email MCP server. Reads across all configured IMAP
 mailboxes and exposes list/get/search tools to an MCP client."""
+
 from __future__ import annotations
 
 import datetime as dt
