@@ -1,0 +1,28 @@
+# Copy this file to accounts.toml and edit. accounts.toml is gitignored.
+#
+# Passwords are NEVER stored here. Each account names an environment variable
+# that must hold the password when the server runs (export it, use direnv, or
+# inject it with a secrets manager like `op run`).
+#
+# enabled = false accounts are listed but never logged into.
+
+[[account]]
+key = "personal"                        # short id used in tool calls
+label = "you@example.com (Fastmail)"    # human-readable, optional
+email = "you@example.com"               # IMAP login
+host = "imap.fastmail.com"
+port = 993
+password_env = "PERSONAL_IMAP_PASSWORD"
+enabled = true
+
+# Gmail / Google Workspace: with 2FA on, the account password is rejected for
+# IMAP. Generate an app password at https://myaccount.google.com/apppasswords
+# (spaces in it are fine; they're stripped automatically).
+[[account]]
+key = "gmail"
+label = "you@gmail.com (Google)"
+email = "you@gmail.com"
+host = "imap.gmail.com"
+port = 993
+password_env = "GMAIL_APP_PASSWORD"
+enabled = false

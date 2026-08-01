@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Per-user account config and anything credential-shaped
+accounts.toml
+.env
+.env.*
+op.env
+*.secret
+creds/
+*credentials*.json
+
+# Personal notes/scripts
+.local/

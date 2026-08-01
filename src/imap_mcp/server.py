@@ -1,0 +1,117 @@
+"""Unified read-only email MCP server. Reads across all configured IMAP
+mailboxes and exposes list/get/search tools to an MCP client."""
+from __future__ import annotations
+
+import datetime as dt
+
+from mcp.server.mcpserver import MCPServer
+
+from . import accounts as acct
+from . import imap
+
+mcp = MCPServer("imap-mcp", version="0.1.0")
+
+
+def _parse_since(since: str | None) -> dt.date | None:
+    if not since:
+        return None
+    return dt.date.fromisoformat(since)  # raises ValueError on bad input
+
+
+def _targets(account: str | None) -> list[acct.Account]:
+    if account:
+        a = acct.get_account(account)
+        return [a] if a.enabled else []
+    return acct.enabled_accounts()
+
+
+@mcp.tool()
+def list_accounts() -> list[dict]:
+    """List configured mail accounts and whether each is reachable right now.
+
+    Performs a live IMAP login per enabled account. Returns status so the caller
+    knows which mailboxes are queryable.
+    """
+    out = []
+    for a in acct.all_accounts():
+        entry = {"account": a.key, "label": a.label, "email": a.email, "enabled": a.enabled}
+        if not a.enabled:
+            entry["status"] = "disabled"
+        elif not a.password():
+            entry["status"] = "no-credential"
+        else:
+            try:
+                with imap.open_box(a):
+                    entry["status"] = "ok"
+            except Exception as e:  # noqa: BLE001 -- report, don't crash
+                entry["status"] = f"unreachable: {type(e).__name__}"
+        out.append(entry)
+    return out
+
+
+@mcp.tool()
+def list_emails(
+    account: str | None = None,
+    since: str | None = None,
+    unread_only: bool = False,
+    limit: int = 25,
+) -> list[dict]:
+    """List recent emails, newest first.
+
+    account: account key (see list_accounts). Omit to merge ALL enabled accounts.
+    since: ISO date (YYYY-MM-DD) lower bound, optional.
+    unread_only: only unseen messages.
+    limit: max rows (per account when merging).
+    """
+    since_d = _parse_since(since)
+    rows: list[dict] = []
+    for a in _targets(account):
+        try:
+            rows.extend(imap.fetch_rows(a, since=since_d, unread_only=unread_only, limit=limit))
+        except Exception as e:  # noqa: BLE001 -- per-account fail-safe
+            rows.append({"account": a.key, "error": f"{type(e).__name__}: {e}"})
+    rows.sort(key=lambda r: r.get("date") or "", reverse=True)
+    return rows
+
+
+@mcp.tool()
+def search_emails(
+    query: str,
+    account: str | None = None,
+    since: str | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """Search emails across from/subject/body text, newest first.
+
+    query: free text; matched against sender, subject, and body (IMAP OR).
+    account: omit to search ALL enabled accounts.
+    since: ISO date (YYYY-MM-DD) lower bound, optional.
+    limit: max rows (per account when merging).
+    """
+    since_d = _parse_since(since)
+    rows: list[dict] = []
+    for a in _targets(account):
+        try:
+            rows.extend(imap.fetch_rows(a, query=query, since=since_d, limit=limit))
+        except Exception as e:  # noqa: BLE001
+            rows.append({"account": a.key, "error": f"{type(e).__name__}: {e}"})
+    rows.sort(key=lambda r: r.get("date") or "", reverse=True)
+    return rows
+
+
+@mcp.tool()
+def get_email(account: str, id: str) -> dict:
+    """Fetch one full email (plain-text body preferred) by account + message id.
+
+    id is the value returned in list_emails/search_emails rows (IMAP UID).
+    Reading does not mark the message as read.
+    """
+    a = acct.get_account(account)
+    msg = imap.fetch_one(a, id)
+    if msg is None:
+        return {"account": account, "id": id, "error": "not found in INBOX"}
+    return msg
+
+
+def main() -> None:
+    mcp.run()

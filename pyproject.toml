@@ -1,0 +1,21 @@
+[project]
+name = "imap-mcp"
+version = "0.1.0"
+description = "Read-only MCP server for searching and reading mail across multiple IMAP accounts"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Lee Flannery" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "imap-tools>=1.13.0",
+    "mcp[cli]>=1.28.1",
+]
+
+[project.scripts]
+imap-mcp = "imap_mcp:main"
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
