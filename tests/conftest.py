@@ -30,12 +30,18 @@ CONFIG = textwrap.dedent("""\
 """)
 
 
+@pytest.fixture(autouse=True)
+def fresh_registry():
+    """Every test starts and ends with an empty account-registry cache."""
+    accounts.reset()
+    yield
+    accounts.reset()
+
+
 @pytest.fixture
 def config(tmp_path, monkeypatch):
     """Point the registry at a three-account test config (one disabled)."""
     path = tmp_path / "accounts.toml"
     path.write_text(CONFIG)
     monkeypatch.setenv("IMAP_MCP_ACCOUNTS", str(path))
-    accounts._load.cache_clear()
-    yield path
-    accounts._load.cache_clear()
+    return path

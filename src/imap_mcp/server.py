@@ -4,6 +4,7 @@ mailboxes and exposes list/get/search tools to an MCP client."""
 from __future__ import annotations
 
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 
 from mcp.server.mcpserver import MCPServer
 
@@ -13,17 +14,42 @@ from . import imap
 mcp = MCPServer("imap-mcp", version="0.1.0")
 
 
-def _parse_since(since: str | None) -> dt.date | None:
-    if not since:
-        return None
-    return dt.date.fromisoformat(since)  # raises ValueError on bad input
-
-
 def _targets(account: str | None) -> list[acct.Account]:
     if account:
         a = acct.get_account(account)
         return [a] if a.enabled else []
     return acct.enabled_accounts()
+
+
+def _fan_out(account: str | None, **fetch_kwargs) -> list[dict]:
+    """Query each target account concurrently; a failing account becomes an
+    error row instead of poisoning the others."""
+
+    def one(a: acct.Account) -> list[dict]:
+        try:
+            return imap.fetch_rows(a, **fetch_kwargs)
+        except Exception as e:  # noqa: BLE001 -- per-account fail-safe
+            return [{"account": a.key, "error": f"{type(e).__name__}: {e}"}]
+
+    targets = _targets(account)
+    if not targets:
+        return []
+    with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+        rows = [r for per_account in pool.map(one, targets) for r in per_account]
+    rows.sort(key=lambda r: r.get("date") or "", reverse=True)
+    return rows
+
+
+def _status(a: acct.Account) -> str:
+    if not a.enabled:
+        return "disabled"
+    if not a.password():
+        return "no-credential"
+    try:
+        with imap.open_box(a):
+            return "ok"
+    except Exception as e:  # noqa: BLE001 -- report, don't crash
+        return f"unreachable: {type(e).__name__}"
 
 
 @mcp.tool()
@@ -33,27 +59,21 @@ def list_accounts() -> list[dict]:
     Performs a live IMAP login per enabled account. Returns status so the caller
     knows which mailboxes are queryable.
     """
-    out = []
-    for a in acct.all_accounts():
-        entry = {"account": a.key, "label": a.label, "email": a.email, "enabled": a.enabled}
-        if not a.enabled:
-            entry["status"] = "disabled"
-        elif not a.password():
-            entry["status"] = "no-credential"
-        else:
-            try:
-                with imap.open_box(a):
-                    entry["status"] = "ok"
-            except Exception as e:  # noqa: BLE001 -- report, don't crash
-                entry["status"] = f"unreachable: {type(e).__name__}"
-        out.append(entry)
-    return out
+    accounts = acct.all_accounts()
+    if not accounts:
+        return []
+    with ThreadPoolExecutor(max_workers=len(accounts)) as pool:
+        statuses = list(pool.map(_status, accounts))
+    return [
+        {"account": a.key, "label": a.label, "email": a.email, "enabled": a.enabled, "status": s}
+        for a, s in zip(accounts, statuses, strict=True)
+    ]
 
 
 @mcp.tool()
 def list_emails(
     account: str | None = None,
-    since: str | None = None,
+    since: dt.date | None = None,
     unread_only: bool = False,
     limit: int = 25,
 ) -> list[dict]:
@@ -64,22 +84,14 @@ def list_emails(
     unread_only: only unseen messages.
     limit: max rows (per account when merging).
     """
-    since_d = _parse_since(since)
-    rows: list[dict] = []
-    for a in _targets(account):
-        try:
-            rows.extend(imap.fetch_rows(a, since=since_d, unread_only=unread_only, limit=limit))
-        except Exception as e:  # noqa: BLE001 -- per-account fail-safe
-            rows.append({"account": a.key, "error": f"{type(e).__name__}: {e}"})
-    rows.sort(key=lambda r: r.get("date") or "", reverse=True)
-    return rows
+    return _fan_out(account, since=since, unread_only=unread_only, limit=limit)
 
 
 @mcp.tool()
 def search_emails(
     query: str,
     account: str | None = None,
-    since: str | None = None,
+    since: dt.date | None = None,
     limit: int = 25,
 ) -> list[dict]:
     """Search emails across from/subject/body text, newest first.
@@ -89,15 +101,7 @@ def search_emails(
     since: ISO date (YYYY-MM-DD) lower bound, optional.
     limit: max rows (per account when merging).
     """
-    since_d = _parse_since(since)
-    rows: list[dict] = []
-    for a in _targets(account):
-        try:
-            rows.extend(imap.fetch_rows(a, query=query, since=since_d, limit=limit))
-        except Exception as e:  # noqa: BLE001
-            rows.append({"account": a.key, "error": f"{type(e).__name__}: {e}"})
-    rows.sort(key=lambda r: r.get("date") or "", reverse=True)
-    return rows
+    return _fan_out(account, query=query, since=since, limit=limit)
 
 
 @mcp.tool()
@@ -110,7 +114,7 @@ def get_email(account: str, id: str) -> dict:
     a = acct.get_account(account)
     msg = imap.fetch_one(a, id)
     if msg is None:
-        return {"account": account, "id": id, "error": "not found in INBOX"}
+        return {"account": account, "id": id, "error": "not found"}
     return msg
 
 

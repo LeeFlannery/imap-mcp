@@ -1,15 +1,10 @@
+import asyncio
 import datetime as dt
+from contextlib import nullcontext
 
 import pytest
 
 from imap_mcp import imap, server
-
-
-def test_parse_since():
-    assert server._parse_since(None) is None
-    assert server._parse_since("2026-07-01") == dt.date(2026, 7, 1)
-    with pytest.raises(ValueError):
-        server._parse_since("July 1st")
 
 
 def test_targets(config):
@@ -21,17 +16,10 @@ def test_targets(config):
 
 
 def test_list_accounts_statuses(config, monkeypatch):
-    class Box:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
     def open_box(account):
         if account.key == "gmailish":
             raise ConnectionRefusedError("nope")
-        return Box()
+        return nullcontext()
 
     monkeypatch.setenv("ALPHA_PW", "pw")
     monkeypatch.setenv("BETA_PW", "pw")
@@ -78,7 +66,7 @@ def test_list_emails_single_account_passes_filters(config, monkeypatch):
         return []
 
     monkeypatch.setattr(imap, "fetch_rows", fetch_rows)
-    server.list_emails(account="alpha", since="2026-07-01", unread_only=True, limit=5)
+    server.list_emails(account="alpha", since=dt.date(2026, 7, 1), unread_only=True, limit=5)
     assert seen == {
         "alpha": {"since": dt.date(2026, 7, 1), "unread_only": True, "limit": 5},
     }
@@ -105,7 +93,7 @@ def test_search_emails_passes_query(config, monkeypatch):
         return []
 
     monkeypatch.setattr(imap, "fetch_rows", fetch_rows)
-    server.search_emails("invoice", since="2026-07-01", limit=10)
+    server.search_emails("invoice", since=dt.date(2026, 7, 1), limit=10)
     assert set(seen) == {"alpha", "gmailish"}
     assert seen["alpha"] == {"query": "invoice", "since": dt.date(2026, 7, 1), "limit": 10}
 
@@ -118,11 +106,22 @@ def test_get_email_found(config, monkeypatch):
 def test_get_email_not_found(config, monkeypatch):
     monkeypatch.setattr(imap, "fetch_one", lambda a, uid: None)
     out = server.get_email("alpha", "42")
-    assert out["error"] == "not found in INBOX"
+    assert out["error"] == "not found"
 
 
 def test_all_tools_registered():
-    import asyncio
-
     tools = {t.name for t in asyncio.run(server.mcp.list_tools())}
     assert tools == {"list_accounts", "list_emails", "search_emails", "get_email"}
+
+
+def test_since_param_coerces_iso_strings(config, monkeypatch):
+    """The MCP layer parses ISO date strings into datetime.date for `since`."""
+    seen = {}
+
+    def fetch_rows(account, **kwargs):
+        seen[account.key] = kwargs
+        return []
+
+    monkeypatch.setattr(imap, "fetch_rows", fetch_rows)
+    asyncio.run(server.mcp.call_tool("list_emails", {"account": "alpha", "since": "2026-07-01"}))
+    assert seen["alpha"]["since"] == dt.date(2026, 7, 1)

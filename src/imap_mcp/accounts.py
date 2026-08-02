@@ -10,14 +10,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-# Config resolution order: $IMAP_MCP_ACCOUNTS if set, else accounts.toml at the
-# project root (src/imap_mcp/accounts.py -> two parents up).
+# Default when $IMAP_MCP_ACCOUNTS is unset: accounts.toml at the project root
+# (src/imap_mcp/accounts.py -> two parents up).
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "accounts.toml"
-
-
-def config_path() -> Path:
-    override = os.environ.get("IMAP_MCP_ACCOUNTS")
-    return Path(override) if override else DEFAULT_CONFIG_PATH
 
 
 @dataclass(frozen=True)
@@ -32,12 +27,23 @@ class Account:
 
     def password(self) -> str | None:
         """Password from the named env var, or None if unset/empty."""
-        return os.environ.get(self.password_env) or None
+        pw = os.environ.get(self.password_env) or None
+        # Google shows app passwords with spaces for readability; IMAP wants them bare.
+        if pw and self.host.endswith("gmail.com"):
+            pw = pw.replace(" ", "")
+        return pw
+
+    def require_password(self) -> str:
+        pw = self.password()
+        if not pw:
+            raise RuntimeError(f"no password for {self.key} (env {self.password_env} unset)")
+        return pw
 
 
 @lru_cache(maxsize=1)
 def _load() -> dict[str, Account]:
-    path = config_path()
+    override = os.environ.get("IMAP_MCP_ACCOUNTS")
+    path = Path(override) if override else DEFAULT_CONFIG_PATH
     if not path.exists():
         raise FileNotFoundError(
             f"no account config at {path}; copy accounts.example.toml to "
@@ -59,6 +65,11 @@ def _load() -> dict[str, Account]:
         )
         out[acct.key] = acct
     return out
+
+
+def reset() -> None:
+    """Forget the cached registry so the next call reloads from disk."""
+    _load.cache_clear()
 
 
 def all_accounts() -> list[Account]:

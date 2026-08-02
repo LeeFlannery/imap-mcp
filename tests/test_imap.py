@@ -61,6 +61,7 @@ def test_open_box_requires_password(config):
     alpha = accounts.get_account("alpha")
     with pytest.raises(RuntimeError, match="ALPHA_PW"), imap.open_box(alpha):
         pass
+    assert not FakeMailBox.instances  # no connection attempted without a password
 
 
 def test_open_box_logs_in_and_out(config, monkeypatch):
@@ -72,14 +73,10 @@ def test_open_box_logs_in_and_out(config, monkeypatch):
     assert box.logged_out
 
 
-def test_open_box_strips_spaces_for_gmail_only(config, monkeypatch):
+def test_open_box_uses_normalized_gmail_password(config, monkeypatch):
     monkeypatch.setenv("BETA_PW", "abcd efgh ijkl mnop")
     with imap.open_box(accounts.get_account("gmailish")) as box:
         assert box.login_args[1] == "abcdefghijklmnop"
-
-    monkeypatch.setenv("ALPHA_PW", "pass with spaces")
-    with imap.open_box(accounts.get_account("alpha")) as box:
-        assert box.login_args[1] == "pass with spaces"
 
 
 def test_snippet_collapses_newlines_and_truncates():

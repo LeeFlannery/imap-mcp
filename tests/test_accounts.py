@@ -39,23 +39,31 @@ def test_password_from_env(config, monkeypatch):
     assert alpha.password() is None  # empty counts as unset
 
 
+def test_password_strips_spaces_for_gmail_only(config, monkeypatch):
+    monkeypatch.setenv("BETA_PW", "abcd efgh ijkl mnop")
+    assert accounts.get_account("gmailish").password() == "abcdefghijklmnop"
+
+    monkeypatch.setenv("ALPHA_PW", "pass with spaces")
+    assert accounts.get_account("alpha").password() == "pass with spaces"
+
+
+def test_require_password(config, monkeypatch):
+    alpha = accounts.get_account("alpha")
+    with pytest.raises(RuntimeError, match="ALPHA_PW"):
+        alpha.require_password()
+    monkeypatch.setenv("ALPHA_PW", "hunter2")
+    assert alpha.require_password() == "hunter2"
+
+
 def test_missing_config_error_mentions_example(monkeypatch, tmp_path):
     monkeypatch.setenv("IMAP_MCP_ACCOUNTS", str(tmp_path / "nope.toml"))
-    accounts._load.cache_clear()
-    try:
-        with pytest.raises(FileNotFoundError, match="accounts.example.toml"):
-            accounts.all_accounts()
-    finally:
-        accounts._load.cache_clear()
+    with pytest.raises(FileNotFoundError, match="accounts.example.toml"):
+        accounts.all_accounts()
 
 
 def test_example_config_is_loadable(monkeypatch):
     example = accounts.DEFAULT_CONFIG_PATH.parent / "accounts.example.toml"
     monkeypatch.setenv("IMAP_MCP_ACCOUNTS", str(example))
-    accounts._load.cache_clear()
-    try:
-        accts = accounts.all_accounts()
-        assert accts, "example config should define at least one account"
-        assert all(a.password_env for a in accts)
-    finally:
-        accounts._load.cache_clear()
+    accts = accounts.all_accounts()
+    assert accts, "example config should define at least one account"
+    assert all(a.password_env for a in accts)
